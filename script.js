@@ -213,10 +213,12 @@
     let height = 0;
     let nodes = [];
     let animationId = 0;
-    const pointer = { x: 0, y: 0, active: false };
+    let running = true;
+    const linkDistance = 120;
+    const linkDistanceSq = linkDistance * linkDistance;
 
     function resize() {
-      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+      const ratio = Math.min(window.devicePixelRatio || 1, 1.5);
       const rect = canvas.getBoundingClientRect();
       width = Math.max(1, Math.floor(rect.width));
       height = Math.max(1, Math.floor(rect.height));
@@ -224,17 +226,19 @@
       canvas.height = Math.floor(height * ratio);
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
 
-      const count = Math.max(42, Math.min(100, Math.floor(width / 16)));
+      const count = Math.max(24, Math.min(40, Math.floor(width / 28)));
       nodes = Array.from({ length: count }, () => ({
         x: Math.random() * width,
         y: Math.random() * height,
-        vx: (Math.random() - 0.5) * 0.34,
-        vy: (Math.random() - 0.5) * 0.34,
-        size: 1.2 + Math.random() * 2.3
+        vx: (Math.random() - 0.5) * 0.28,
+        vy: (Math.random() - 0.5) * 0.28,
+        size: 1.2 + Math.random() * 2
       }));
     }
 
     function draw() {
+      if (!running) return;
+
       context.clearRect(0, 0, width, height);
       context.fillStyle = "rgba(238, 248, 241, 0.36)";
       context.fillRect(0, 0, width, height);
@@ -249,39 +253,24 @@
         if (node.y > height + 20) node.y = -20;
       });
 
+      context.lineWidth = 1;
       for (let i = 0; i < nodes.length; i += 1) {
+        const a = nodes[i];
         for (let j = i + 1; j < nodes.length; j += 1) {
-          const a = nodes[i];
           const b = nodes[j];
           const dx = a.x - b.x;
           const dy = a.y - b.y;
-          const distance = Math.sqrt(dx * dx + dy * dy);
+          const distanceSq = dx * dx + dy * dy;
 
-          if (distance > 145) continue;
+          if (distanceSq > linkDistanceSq) continue;
 
-          const opacity = (1 - distance / 145) * 0.18;
-          context.strokeStyle = `rgba(18, 107, 63, ${opacity})`;
-          context.lineWidth = 1;
+          const distance = Math.sqrt(distanceSq);
+          context.strokeStyle = `rgba(18, 107, 63, ${(1 - distance / linkDistance) * 0.16})`;
           context.beginPath();
           context.moveTo(a.x, a.y);
           context.lineTo(b.x, b.y);
           context.stroke();
         }
-      }
-
-      if (pointer.active) {
-        nodes.forEach((node) => {
-          const dx = node.x - pointer.x;
-          const dy = node.y - pointer.y;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          if (distance > 175) return;
-
-          context.strokeStyle = `rgba(13, 148, 136, ${(1 - distance / 175) * 0.24})`;
-          context.beginPath();
-          context.moveTo(node.x, node.y);
-          context.lineTo(pointer.x, pointer.y);
-          context.stroke();
-        });
       }
 
       nodes.forEach((node, index) => {
@@ -294,24 +283,47 @@
       animationId = requestAnimationFrame(draw);
     }
 
-    canvas.addEventListener("pointermove", (event) => {
-      const rect = canvas.getBoundingClientRect();
-      pointer.x = event.clientX - rect.left;
-      pointer.y = event.clientY - rect.top;
-      pointer.active = true;
-    });
+    function stop() {
+      running = false;
+      cancelAnimationFrame(animationId);
+    }
 
-    canvas.addEventListener("pointerleave", () => {
-      pointer.active = false;
+    function start() {
+      if (running) return;
+      running = true;
+      draw();
+    }
+
+    const heroSection = canvas.closest(".hero-section");
+    if (heroSection && "IntersectionObserver" in window) {
+      const visibilityObserver = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              start();
+            } else {
+              stop();
+            }
+          });
+        },
+        { threshold: 0.05 }
+      );
+      visibilityObserver.observe(heroSection);
+    }
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        stop();
+      } else if (!heroSection || heroSection.getBoundingClientRect().bottom > 0) {
+        start();
+      }
     });
 
     window.addEventListener("resize", resize);
     resize();
     draw();
 
-    prefersReducedMotion.addEventListener("change", () => {
-      cancelAnimationFrame(animationId);
-    });
+    prefersReducedMotion.addEventListener("change", stop);
   }
 
   window.addEventListener("scroll", updateProgress, { passive: true });
